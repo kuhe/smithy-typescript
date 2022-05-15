@@ -28,9 +28,9 @@ public class HttpProtocolGeneratorUtilsTest {
         mockContext.setWriter(writer);
         TimestampShape shape = TimestampShape.builder().id("com.smithy.example#Foo").build();
 
-        assertThat("(" + DATA_SOURCE + ".toISOString().split('.')[0]+\"Z\")",
+        assertThat("__timestampInputParam(" + DATA_SOURCE + ", 'D')",
                 equalTo(HttpProtocolGeneratorUtils.getTimestampInputParam(mockContext, DATA_SOURCE, shape, Format.DATE_TIME)));
-        assertThat("Math.round(" + DATA_SOURCE + ".getTime() / 1000)",
+        assertThat("__timestampInputParam(" + DATA_SOURCE + ", 'E')",
                 equalTo(HttpProtocolGeneratorUtils.getTimestampInputParam(mockContext, DATA_SOURCE, shape, Format.EPOCH_SECONDS)));
         assertThat("__dateToUtcString(" + DATA_SOURCE + ")",
                 equalTo(HttpProtocolGeneratorUtils.getTimestampInputParam(mockContext, DATA_SOURCE, shape, Format.HTTP_DATE)));

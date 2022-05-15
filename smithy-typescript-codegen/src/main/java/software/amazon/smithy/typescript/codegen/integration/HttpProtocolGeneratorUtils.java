@@ -76,10 +76,12 @@ public final class HttpProtocolGeneratorUtils {
     ) {
         switch (format) {
             case DATE_TIME:
+                context.getWriter().addImport("timestampInputParam", "__timestampInputParam", "@aws-sdk/smithy-client");
                 // Use the split to not serialize milliseconds.
-                return "(" + dataSource + ".toISOString().split('.')[0]+\"Z\")";
+                return "__timestampInputParam(" + dataSource + ", 'D')";
             case EPOCH_SECONDS:
-                return "Math.round(" + dataSource + ".getTime() / 1000)";
+                context.getWriter().addImport("timestampInputParam", "__timestampInputParam", "@aws-sdk/smithy-client");
+                return "__timestampInputParam(" + dataSource + ", 'E')";
             case HTTP_DATE:
                 context.getWriter().addImport("dateToUtcString", "__dateToUtcString", "@aws-sdk/smithy-client");
                 return "__dateToUtcString(" + dataSource + ")";
@@ -351,45 +353,56 @@ public final class HttpProtocolGeneratorUtils {
             writer.write("let response: $T;", baseExceptionReference);
             writer.write("let errorCode: string = \"UnknownError\";");
             errorCodeGenerator.accept(context);
-            writer.openBlock("switch (errorCode) {", "}", () -> {
-                // Generate the case statement for each error, invoking the specific deserializer.
-                new TreeSet<>(operationIndex.getErrors(operation, context.getService())).forEach(error -> {
-                    final ShapeId errorId = error.getId();
-                    // Track errors bound to the operation so their deserializers may be generated.
-                    errorShapes.add(error);
-                    Symbol errorSymbol = symbolProvider.toSymbol(error);
-                    String errorDeserMethodName = ProtocolGenerator.getDeserFunctionName(errorSymbol,
-                            context.getProtocolName()) + "Response";
-                     // Dispatch to the error deserialization function.
-                    String outputParam = shouldParseErrorBody ? "parsedOutput" : "output";
-                    writer.write("case $S:", errorId.getName());
-                    writer.write("case $S:", errorId.toString());
-                    writer.indent()
-                            .write("throw await $L($L, context);", errorDeserMethodName, outputParam)
-                            .dedent();
+
+            List<StructureShape> knownErrors = operationIndex.getErrors(operation, context.getService());
+
+            Runnable defaultAction = () -> {
+                if (shouldParseErrorBody) {
+                    // Body is already parsed above
+                    writer.write("const parsedBody = parsedOutput.body;");
+                } else {
+                    // Body is not parsed above, so parse it here
+                    writer.write("const parsedBody = await parseBody(output.body, context);");
+                }
+
+                // Get the protocol specific error location for retrieving contents.
+                String errorLocation = bodyErrorLocationModifier.apply(context, "parsedBody");
+                writer.openBlock("response = new $T({", "});", baseExceptionReference, () -> {
+                    writer.write("name: $1L.code || $1L.Code || errorCode,", errorLocation);
+                    writer.write("$$fault: \"client\",");
+                    writer.write("$$metadata: deserializeMetadata(output)");
                 });
+                writer.addImport("decorateServiceException", "__decorateServiceException",
+                        TypeScriptDependency.AWS_SMITHY_CLIENT.packageName);
+                writer.write("throw __decorateServiceException(response, $L);", errorLocation);
+            };
 
-                // Build a generic error the best we can for ones we don't know about.
-                writer.write("default:").indent();
-                        if (shouldParseErrorBody) {
-                            // Body is already parsed above
-                            writer.write("const parsedBody = parsedOutput.body;");
-                        } else {
-                            // Body is not parsed above, so parse it here
-                            writer.write("const parsedBody = await parseBody(output.body, context);");
-                        }
+            if (knownErrors.isEmpty()) {
+                defaultAction.run();
+            } else {
+                writer.openBlock("switch (errorCode) {", "}", () -> {
+                    // Generate the case statement for each error, invoking the specific deserializer.
+                    new TreeSet<>(knownErrors).forEach(error -> {
+                        final ShapeId errorId = error.getId();
+                        // Track errors bound to the operation so their deserializers may be generated.
+                        errorShapes.add(error);
+                        Symbol errorSymbol = symbolProvider.toSymbol(error);
+                        String errorDeserMethodName = ProtocolGenerator.getDeserFunctionName(errorSymbol,
+                                context.getProtocolName()) + "Response";
+                         // Dispatch to the error deserialization function.
+                        String outputParam = shouldParseErrorBody ? "parsedOutput" : "output";
+                        writer.write("case $S:", errorId.getName());
+                        writer.write("case $S:", errorId.toString());
+                        writer.indent()
+                                .write("throw await $L($L, context);", errorDeserMethodName, outputParam)
+                                .dedent();
+                    });
 
-                        // Get the protocol specific error location for retrieving contents.
-                        String errorLocation = bodyErrorLocationModifier.apply(context, "parsedBody");
-                        writer.openBlock("response = new $T({", "});", baseExceptionReference, () -> {
-                            writer.write("name: $1L.code || $1L.Code || errorCode,", errorLocation);
-                            writer.write("$$fault: \"client\",");
-                            writer.write("$$metadata: deserializeMetadata(output)");
-                        });
-                        writer.addImport("decorateServiceException", "__decorateServiceException",
-                                TypeScriptDependency.AWS_SMITHY_CLIENT.packageName);
-                        writer.write("throw __decorateServiceException(response, $L);", errorLocation);
-            });
+                    // Build a generic error the best we can for ones we don't know about.
+                    writer.write("default:").indent();
+                    defaultAction.run();
+                });
+            }
         });
         writer.write("");
 
