@@ -37,6 +37,7 @@ public final class EndpointsV2Generator implements Runnable {
     static final String ENDPOINT_PARAMETERS_FILE = "EndpointParameters.ts";
     static final String ENDPOINT_RESOLVER_FILE = "endpointResolver.ts";
     static final String ENDPOINT_RULESET_FILE = "ruleset.ts";
+    static final String ENDPOINT_RULESET_JSON_FILE = "ruleset.json";
 
     private final TypeScriptDelegator delegator;
     private final EndpointRuleSetTrait endpointRuleSetTrait;
@@ -185,17 +186,20 @@ public final class EndpointsV2Generator implements Runnable {
             Paths.get(CodegenUtils.SOURCE_FOLDER, ENDPOINT_FOLDER, ENDPOINT_RULESET_FILE).toString(),
             writer -> {
                 writer.addImport("RuleSetObject", null, "@aws-sdk/util-endpoints");
-                writer.openBlock(
-                    "export const ruleSet: RuleSetObject = ",
-                    "",
-                    () -> {
-                        new RuleSetSerializer(
-                            endpointRuleSetTrait.getRuleSet(),
-                            writer
-                        ).generate();
-                    }
+                writer.write("import rulesetJson from \"./ruleset.json\";");
+                writer.write(
+                    "export const ruleSet: RuleSetObject = rulesetJson as any;"
                 );
 
+            }
+        );
+        this.delegator.useFileWriter(
+            Paths.get(CodegenUtils.SOURCE_FOLDER, ENDPOINT_FOLDER, ENDPOINT_RULESET_JSON_FILE).toString(),
+            writer -> {
+                new RuleSetSerializer(
+                    endpointRuleSetTrait.getRuleSet(),
+                    writer
+                ).generate();
             }
         );
     }
