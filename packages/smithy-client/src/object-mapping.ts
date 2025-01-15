@@ -313,11 +313,54 @@ const applyInstruction = (
 };
 
 /**
- * internal
+ * @internal
  */
 const nonNullish = (_: any) => _ != null;
 
 /**
- * internal
+ * @internal
  */
 const pass = (_: any) => _;
+
+/**
+ * @internal
+ */
+export const copyDocumentWithTransform = (source: any, transform = (_: any) => _): any => {
+  switch (typeof source) {
+    case "undefined":
+    case "boolean":
+    case "number":
+    case "string":
+    case "bigint":
+    case "symbol":
+      return transform(source);
+    case "function":
+    case "object":
+      if (source === null) {
+        return null;
+      }
+      if (Array.isArray(source)) {
+        const newArray = new Array(source.length);
+        let i = 0;
+        for (const item of source) {
+          newArray[i++] = copyDocumentWithTransform(item, transform);
+        }
+        return transform(newArray);
+      }
+      if ("byteLength" in (source as Uint8Array)) {
+        const newBytes = new Uint8Array(source.byteLength);
+        newBytes.set(source, 0);
+        return transform(newBytes);
+      }
+      if (source instanceof Date) {
+        return transform(source);
+      }
+      const newObject = {} as any;
+      for (const key of Object.keys(source)) {
+        newObject[key] = copyDocumentWithTransform(source[key], transform);
+      }
+      return transform(newObject);
+    default:
+      return transform(source);
+  }
+};
