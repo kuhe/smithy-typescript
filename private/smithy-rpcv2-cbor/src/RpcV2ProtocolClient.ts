@@ -263,6 +263,9 @@ export class RpcV2ProtocolClient extends __Client<
       })
     );
     this.middlewareStack.use(getHttpSigningPlugin(this.config));
+    if ((_config_0 as unknown) !== this.config) {
+      throw new Error(`${this.constructor.name} - ConfigCustodyError`);
+    }
   }
 
   /**

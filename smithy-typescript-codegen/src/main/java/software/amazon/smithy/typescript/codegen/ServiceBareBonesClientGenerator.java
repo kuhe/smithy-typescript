@@ -375,8 +375,9 @@ public final class ServiceBareBonesClientGenerator implements Runnable {
                 .build());
 
             int configVariable = 0;
+            String initialConfigVar = generateConfigVariable(configVariable);
             writer.write("let $L = __getRuntimeConfig(configuration || {});",
-                    generateConfigVariable(configVariable));
+                initialConfigVar);
 
             if (service.hasTrait(EndpointRuleSetTrait.class)) {
                 configVariable++;
@@ -484,6 +485,17 @@ public final class ServiceBareBonesClientGenerator implements Runnable {
                 });
             }
             writer.popState();
+
+            // If you find this term via search - ConfigCustodyError:
+            // This means the config resolver stack dropped the reference to the initial copy of the
+            // config. This indicates a programming error. The configuration object passed into
+            // the constructor should not be copied except for initially by the runtimeConfig
+            // factory.
+            writer.write("""
+                if ($L as unknown !== this.config) {
+                    throw new Error(`$${this.constructor.name} - ConfigCustodyError`);
+                }
+                """, initialConfigVar);
         });
     }
 
