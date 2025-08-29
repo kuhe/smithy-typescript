@@ -25,7 +25,7 @@ import software.amazon.smithy.utils.SmithyInternalApi;
  * form of compression on long protocol serde files.
  */
 @SmithyInternalApi
-public final class StringStore {
+public class StringStore {
     /**
      * Words are the component strings found within `camelCaseWords` or `header-dashed-words`.
      */
